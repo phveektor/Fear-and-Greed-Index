@@ -447,7 +447,14 @@ class FGG_Admin_Settings {
         check_ajax_referer( 'fgg_admin' );
         if ( ! current_user_can( 'manage_options' ) ) wp_die(-1);
 
+        // Inject the widget's frontend styles and scripts into the AJAX response
+        $css_url = esc_url( constant( 'FGG_PLUGIN_URL' ) . 'assets/css/gauge-styles.css?v=' . time() );
+        $js_url  = esc_url( constant( 'FGG_PLUGIN_URL' ) . 'assets/js/gauge-animation.js?v=' . time() );
+
+        echo '<link rel="stylesheet" href="' . $css_url . '">';
         echo do_shortcode( '[fear_greed_gauge]' );
+        echo '<script src="' . $js_url . '"></script>';
+        
         wp_die();
     }
 }
