@@ -47,7 +47,10 @@ class FG_Data {
 		// Fetch fresh
 		$raw = self::fetch_from_api();
 
-		if ( ! $raw || ! isset( $raw['data'] ) || ! is_array( $raw['data'] ) ) {
+		// Determine cache TTL. If we used fallback data, only cache for 5 minutes
+		// to allow the system to recover quickly when the API comes back online.
+		$is_fallback = ( ! $raw || ! isset( $raw['data'] ) || ! is_array( $raw['data'] ) );
+		if ( $is_fallback ) {
 			// Use fallback static data
 			$raw = self::fallback_data();
 		}
@@ -85,8 +88,9 @@ class FG_Data {
 			'timestamp'     => time(),
 		);
 
-		// Cache result
-		set_transient( self::TRANSIENT_KEY, $structured, self::get_cache_ttl() );
+		// Cache result. Use shorter TTL for fallback data.
+		$ttl = $is_fallback ? 300 : self::get_cache_ttl();
+		set_transient( self::TRANSIENT_KEY, $structured, $ttl );
 
 		return $structured;
 	}

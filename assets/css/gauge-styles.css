@@ -1,185 +1,257 @@
-/* Gauge Styles for Fear & Greed Gauge Widget */
+/* Fear & Greed Gauge Widget — Premium Styles */
 
-:root{
-	--fgg-red: #e53935;
-	--fgg-yellow: #ffca28;
-	--fgg-green: #43a047;
-	--fgg-gray: #f3f4f6;
-	--fgg-text: #111827;
+:root {
+	--fgg-red:       #e53935;
+	--fgg-orange:    #ff7043;
+	--fgg-yellow:    #ffca28;
+	--fgg-green:     #43a047;
+	--fgg-text:      #1e293b;
+	--fgg-muted:     #64748b;
+	--fgg-bg:        #ffffff;
+	--fgg-border:    #e2e8f0;
+	--fgg-shadow:    0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
 }
 
-.fgg-widget{font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'Noto Sans',sans-serif;color:var(--fgg-text);}
-
-.fgg-gauge{display:flex;flex-direction:column;align-items:center}
-.fgg-gauge .gauge-wrap{position:relative;display:flex;justify-content:center;align-items:flex-start;overflow:visible;margin-bottom:0;min-height:100px;height:100px;padding-bottom:0}
-
-/* Prevent SVG chart from overflowing narrow sidebars */
-.fgg-widget .fgg-svg-chart{max-width:100%;width:100%;height:auto;box-sizing:border-box}
-.fgg-widget .fgg-svg-bars g.fgg-svg-bar rect{max-width:100%;}
-
-/* Ensure the gauge fits narrow sidebars */
-.fgg-widget{max-width:100%;width:100%;box-sizing:border-box;display:block;margin:0 auto;padding:1rem 0.5rem 1.5rem;background:#fff;border:1px solid #e6e9ee;border-radius:6px;text-align:center}
-.fgg-widget .gauge-circle{max-width:100%;height:auto}
-
-.fgg-gauge-svg{margin:0 auto;display:block}
-.fgg-face{mix-blend-mode:normal}
-
-/* SVG gauge sizing & appearance */
-.fgg-gauge-svg{width:100%;height:100px;max-width:var(--gauge-w,200px);display:block;margin:0 auto}
-.fgg-face{z-index:1}
-.fgg-face-mask{display:none}
-.fgg-needle-group{z-index:4;transform-origin:100px 95px;will-change:transform}
-.fgg-needle-pivot{filter:drop-shadow(0 1px 0 rgba(0,0,0,0.06))}
-
-/* Meter dimensions / legend under gauge for clarity */
-.fgg-meta{font-size:0.85rem;color:#6b7280;text-align:center;margin-top:0.4rem}
-.fgg-meta .fgg-dim{display:inline-block;margin:0 .35rem;padding:.18rem .45rem;background:#f9fafb;border-radius:4px;border:1px solid #eef2f7}
-
-/* Physical spacer to prevent overlap */
-.fgg-spacer{display:none}
-
-/* Detailed meta container (value + change + date) */
-.fgg-detailed-meta{margin-top:0;margin-bottom:0.5rem;text-align:center;min-height:auto;display:block;padding-top:0}
-
-/* Value row - side by side layout */
-.fgg-value-row{display:flex;align-items:center;justify-content:center;gap:0.75rem;margin-bottom:0.35rem}
-
-.fgg-legend-title{font-size:0.95rem;color:var(--fgg-text);margin-bottom:0.35rem}
-.fgg-bar-label{display:block;font-size:0.65rem;color:#9ca3af;margin-top:4px;text-align:center}
-
-/* Center mini-chart bars and labels */
-.fgg-mini-chart{justify-content:center}
-
-/* Hide the gray mask visually (we want the colored face only) */
-.fgg-face-mask{display:none}
-
-/* Hide mini chart entirely from frontend */
-.fgg-mini-chart{display:flex;gap:6px;align-items:end;margin-top:.75rem;justify-content:center}
-.fgg-mini-chart .fgg-bar{width:10px;background:rgba(0,0,0,0.06);height:20px;transition:height .6s ease-out;border-radius:2px}
-.fgg-mini-chart .fgg-bar[data-height]{background:linear-gradient(180deg, rgba(67,160,71,0.95), rgba(255,202,40,0.85));}
-.gauge-small .fgg-mini-chart .fgg-bar{width:6px;height:12px}
-
-/* Screen reader only utility */
-.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-
-/* Size variants using CSS variables so wrap and needle align */
-.gauge-small{--gauge-w:150px;--gauge-h:75px}
-.gauge-medium{--gauge-w:200px;--gauge-h:100px}
-.gauge-large{--gauge-w:300px;--gauge-h:150px}
-.gauge-small .gauge-circle,.gauge-medium .gauge-circle,.gauge-large .gauge-circle{width:var(--gauge-w);height:var(--gauge-h)}
-.gauge-small .gauge-wrap,.gauge-medium .gauge-wrap,.gauge-large .gauge-wrap{height:var(--gauge-h)}
-
-.gauge-circle{border-radius:200px 200px 0 0;overflow:hidden;position:relative;background:linear-gradient(90deg,var(--fgg-red) 0%,var(--fgg-yellow) 50%,var(--fgg-green) 100%);display:block;margin:0 auto}
-
-/* Needle (legacy - kept for backwards compatibility, but transitions removed to prevent conflicts) */
-.fgg-needle{position:absolute;left:50%;top:calc(var(--gauge-h,100px) / 2);width:4px;height:calc(var(--gauge-h,100px) * 0.45);background:#222;transform-origin:50% 100%;z-index:4;margin-left:-2px}
-.fgg-needle:after{content:"";position:absolute;left:50%;bottom:0;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#222;box-shadow:0 1px 0 rgba(255,255,255,0.08);border:2px solid rgba(0,0,0,0.08)}
-
-/* Value display — make it visible and prominent */
-.fgg-value{font-size:2.5rem;font-weight:700;line-height:1;color:#1f2937;margin:0;display:inline-block;vertical-align:middle}
-.fgg-value-visible{display:inline-block!important}
-.gauge-small .fgg-value{font-size:2rem}
-.gauge-large .fgg-value{font-size:3rem}
-
-/* Change indicator - inline with value */
-.fgg-change{display:inline-block;font-weight:600;font-size:1rem;margin:0;line-height:1;vertical-align:middle}
-.fgg-change.up{color:var(--fgg-green)}
-.fgg-change.down{color:var(--fgg-red)}
-.fgg-change .arrow{margin-right:.25rem}
-
-/* Hide old duplicate visible change element if present */
-.fgg-change-visible{display:none!important}
-
-/* Last updated timestamp */
-.fgg-last-updated{font-size:0.8rem;color:#9ca3af;margin-top:0.25rem;line-height:1.2;display:block}
-
-/* Mini 7-day chart (styled) */
-.fgg-mini-chart{display:flex;gap:6px;align-items:end;margin-top:.75rem}
-.fgg-mini-chart .fgg-bar{width:10px;background:rgba(0,0,0,0.06);height:20px;transition:height .6s ease-out;border-radius:2px}
-.fgg-mini-chart .fgg-bar[data-height]{background:linear-gradient(180deg, rgba(67,160,71,0.95), rgba(255,202,40,0.85));}
-.gauge-small .fgg-mini-chart .fgg-bar{width:6px;height:12px}
-
-/* Horizontal compact legend below mini chart */
-.fgg-mini-legend{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px;font-size:0.72rem;color:#6b7280}
-.fgg-mini-legend-item{background:transparent;padding:0 6px}
-
-/* remove per-bar label spacing (we now use the horizontal legend) */
-.fgg-bar-label{display:none}
-
-/* Column chart layout */
-.fgg-chart-wrapper{display:flex;gap:8px;align-items:flex-start;margin-top:0.6rem}
-.fgg-y-axis{display:flex;flex-direction:column;justify-content:space-between;height:120px;font-size:0.6rem;color:#9ca3af;padding-right:8px}
-.fgg-chart-area{flex:1}
-.fgg-bars{display:flex;align-items:flex-end;gap:8px;height:120px;padding:4px 2px}
-.fgg-bars .fgg-bar{flex:0 0 auto;width:18px;min-width:12px;border-radius:3px;display:flex;align-items:flex-end;justify-content:center}
-.fgg-bars .fgg-bar-fill{width:100%;border-radius:3px 3px 0 0}
-.fgg-x-axis{display:flex;gap:8px;justify-content:space-between;margin-top:6px;font-size:0.65rem;color:#6b7280}
-.fgg-x-label{display:inline-block;max-width:60px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-
-/* Make chart slightly larger on medium/large gauges */
-.gauge-small .fgg-bars .fgg-bar{width:12px}
-.gauge-medium .fgg-bars .fgg-bar{width:18px}
-.gauge-large .fgg-bars .fgg-bar{width:24px}
-
-/* Ensure the y-axis labels align to the chart area */
-.fgg-chart-wrapper .fgg-y-axis span{display:block;text-align:right;padding-right:6px}
-
-/* Inline SVG chart styling */
-.fgg-svg-chart{max-width:100%;height:auto;display:block;margin:0.5rem auto 0.25rem}
-.fgg-svg-chart .fgg-svg-xlabel{font-size:10px;fill:#6b7280}
-.fgg-svg-chart .fgg-svg-ylabel{font-size:10px;fill:#9ca3af}
-
-/* Chart legend styling */
-.fgg-chart-legend{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.5rem;font-size:0.75rem;color:#6b7280;margin-top:0.5rem}
-.fgg-chart-legend .fgg-legend-swatch{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:0.25rem}
-.fgg-chart-legend .fgg-legend-text{display:inline-block;white-space:nowrap}
-.fgg-svg-chart rect{shape-rendering:crispEdges}
-
-/* Compact label positioning for sidebar charts */
-.fgg-svg-chart .fgg-svg-xlabel{font-size:10px;fill:#6b7280;pointer-events:none}
-.fgg-svg-chart .fgg-svg-ylabel{font-size:10px;fill:#9ca3af;pointer-events:none}
-.fgg-svg-ylabels text{font-family:inherit}
-
-/* Ensure SVG text does not overflow widget area */
-.fgg-widget .fgg-svg-chart text{dominant-baseline:middle}
-
-/* Namespaced fallbacks to avoid theme overrides */
-.fgg-widget .fgg-value-visible{display:block!important}
-.fgg-widget .fgg-change.up{color:var(--fgg-green) !important}
-.fgg-widget .fgg-change.down{color:var(--fgg-red) !important}
-
-/* Ensure mini-chart bars have the intended default visual when theme rules are aggressive */
-.fgg-widget .fgg-mini-chart .fgg-bar{background:rgba(0,0,0,0.06);transition:height .6s ease-out;border-radius:2px}
-.fgg-widget .fgg-mini-chart .fgg-bar[data-height]{background:linear-gradient(180deg, rgba(67,160,71,0.95), rgba(255,202,40,0.85));}
-
-/* responsive reduction so value doesn't overlap the semicircle */
-@media (max-width:360px){
-	.fgg-value-visible{font-size:1.8rem}
-	.gauge-small .fgg-value{font-size:1.5rem}
+/* Dark scheme overrides */
+.fgg-widget.scheme-dark {
+	--fgg-text:   #f1f5f9;
+	--fgg-muted:  #94a3b8;
+	--fgg-bg:     #0f172a;
+	--fgg-border: #1e293b;
+	--fgg-shadow: 0 4px 32px rgba(0,0,0,0.5);
 }
 
-/* Ensure SVG can show labels without being clipped by overflow:hidden parents */
-.fgg-widget .fgg-svg-chart{overflow:visible}
-.fgg-svg-chart text{pointer-events:none}
-
-/* Loading skeletons */
-.fgg-loading .fgg-skeleton{background:linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
-@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-
-/* Error state */
-.fgg-error{color:#b91c1c;background:#fff1f2;padding:.5rem;border-radius:6px;text-align:center}
-
-/* Responsive */
-@media (max-width:600px){
-	.gauge-medium .gauge-circle{width:160px;height:80px}
-	.fgg-value{font-size:2rem!important}
-	.fgg-svg-chart{max-width:180px}
+/* ── Widget container ───────────────────────────────────────────────── */
+.fgg-widget {
+	font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+	color: var(--fgg-text);
+	background: var(--fgg-bg);
+	border: 1px solid var(--fgg-border);
+	border-radius: 16px;
+	box-shadow: var(--fgg-shadow);
+	padding: 1.25rem 1rem 1.5rem;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	text-align: center;
+	display: block;
+	margin: 0 auto 1rem;
 }
 
-@media (min-width:900px){
-	.gauge-large .gauge-circle{width:360px;height:180px}
+/* ── Widget title ───────────────────────────────────────────────────── */
+.fgg-widget-title {
+	font-size: 0.9rem;
+	font-weight: 600;
+	color: var(--fgg-muted);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	margin-bottom: 0.75rem;
 }
 
-/* Accessibility focus states */
-.fgg-widget:focus{outline:2px solid rgba(66,153,225,0.6);outline-offset:2px}
-.fgg-widget:focus-visible{outline:2px solid #3b82f6;outline-offset:2px}
+/* ── Gauge SVG wrapper ──────────────────────────────────────────────── */
+.fgg-gauge-wrap {
+	position: relative;
+	width: 100%;
+	max-width: 100%;
+	overflow: visible;
+	margin: 0 auto;
+}
+
+.fgg-gauge-svg {
+	width: 100%;
+	height: auto;
+	display: block;
+	overflow: visible;
+}
+
+/* Size variants — control max-width of the gauge wrap */
+.gauge-small  .fgg-gauge-wrap { max-width: 200px; }
+.gauge-medium .fgg-gauge-wrap { max-width: 280px; }
+.gauge-large  .fgg-gauge-wrap { max-width: 380px; }
+
+/* ── Variable-width arc track ───────────────────────────────────────── */
+.fgg-arc-track {
+	/* filled polygon — colour set inline via gradient url */
+}
+
+/* ── Needle ─────────────────────────────────────────────────────────── */
+/*
+ * CRITICAL: transform-box:view-box makes transform-origin use
+ * the SVG viewport coordinate system, so (120px 120px) correctly
+ * refers to the pivot point at SVG coordinates (120, 120).
+ * Without this the browser uses the element's bounding box as reference,
+ * making the needle spin around completely the wrong point.
+ */
+.fgg-pointer-group {
+	transform-origin: 120px 120px;
+	transform-box: view-box;
+	will-change: transform;
+	/* Transition applied by JS after setting initial position */
+}
+
+.fgg-needle-body {
+	fill: var(--fgg-text);
+}
+
+/* ── Value display block ────────────────────────────────────────────── */
+.fgg-value-block {
+	margin-top: 0.5rem;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.2rem;
+}
+
+.fgg-value {
+	font-size: 3rem;
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: -0.04em;
+	color: var(--fgg-text);
+	font-variant-numeric: tabular-nums;
+}
+
+.gauge-small .fgg-value { font-size: 2.2rem; }
+.gauge-large .fgg-value { font-size: 4rem; }
+
+.fgg-value-label {
+	font-size: 0.85rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	padding: 0.25rem 0.75rem;
+	border-radius: 20px;
+	background: var(--fgg-border);
+	color: var(--fgg-muted);
+}
+
+/* Classification colour pills */
+.fgg-value-label.extreme-fear { background: rgba(229,57,53,0.12); color: var(--fgg-red); }
+.fgg-value-label.fear         { background: rgba(255,112,67,0.12); color: var(--fgg-orange); }
+.fgg-value-label.neutral      { background: rgba(255,202,40,0.12); color: #b45309; }
+.fgg-value-label.greed,
+.fgg-value-label.extreme-greed{ background: rgba(67,160,71,0.12);  color: var(--fgg-green); }
+
+/* ── Change indicator ───────────────────────────────────────────────── */
+.fgg-change {
+	font-size: 0.9rem;
+	font-weight: 700;
+	margin-top: 0.1rem;
+}
+.fgg-change.up   { color: var(--fgg-green); }
+.fgg-change.down { color: var(--fgg-red);   }
+
+/* ── Last updated ───────────────────────────────────────────────────── */
+.fgg-last-updated {
+	font-size: 0.72rem;
+	color: var(--fgg-muted);
+	margin-top: 0.2rem;
+}
+
+/* ── Legend / meta block ────────────────────────────────────────────── */
+.fgg-meta {
+	margin-top: 0.75rem;
+	font-size: 0.8rem;
+	color: var(--fgg-muted);
+	line-height: 1.5;
+}
+
+.fgg-scope-pill {
+	display: inline-block;
+	font-size: 0.7rem;
+	font-weight: 600;
+	padding: 0.2rem 0.65rem;
+	background: var(--fgg-border);
+	border-radius: 20px;
+	margin-top: 0.35rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+/* ── Section heading ────────────────────────────────────────────────── */
+.fgg-section-heading {
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--fgg-muted);
+	margin-bottom: 0.6rem;
+}
+
+/* ── Chart section ──────────────────────────────────────────────────── */
+.fgg-chart-section {
+	margin-top: 1rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--fgg-border);
+}
+
+.fgg-svg-chart {
+	display: block;
+	margin: 0 auto 0.5rem;
+	max-width: 100%;
+	overflow: visible;
+}
+
+.fgg-svg-ylabel {
+	font-size: 10px;
+	font-family: inherit;
+	fill: var(--fgg-muted);
+}
+
+.fgg-svg-bar {
+	transition: opacity 0.2s;
+}
+.fgg-svg-bar:hover { opacity: 0.75; }
+
+/* ── Chart legend ───────────────────────────────────────────────────── */
+.fgg-chart-legend {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.6rem 1rem;
+	margin-top: 0.5rem;
+	font-size: 0.72rem;
+	color: var(--fgg-muted);
+	font-weight: 500;
+}
+
+.fgg-legend-item {
+	display: flex;
+	align-items: center;
+	gap: 0.3rem;
+	white-space: nowrap;
+}
+
+.fgg-legend-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+/* ── Skeleton loader ────────────────────────────────────────────────── */
+.fgg-skeleton {
+	background: linear-gradient(90deg, var(--fgg-border) 25%, #f8fafc 50%, var(--fgg-border) 75%);
+	background-size: 200% 100%;
+	animation: fgg-shimmer 1.4s linear infinite;
+}
+@keyframes fgg-shimmer {
+	0%   { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* ── Screen-reader utility ──────────────────────────────────────────── */
+.sr-only {
+	position: absolute; width: 1px; height: 1px;
+	padding: 0; margin: -1px; overflow: hidden;
+	clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 400px) {
+	.fgg-value { font-size: 2.5rem; }
+}
+
+/* ── Focus accessibility ────────────────────────────────────────────── */
+.fgg-widget:focus-visible { outline: 2px solid #3b82f6; outline-offset: 3px; }

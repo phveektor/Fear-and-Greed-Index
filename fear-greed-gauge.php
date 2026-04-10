@@ -158,11 +158,6 @@ class FG_Gauge_Plugin {
 		}
 		if ( ! wp_script_is( 'fgg-gauge-animation', 'enqueued' ) ) {
 			wp_enqueue_script( 'fgg-gauge-animation' );
-			// Localize common data
-			wp_localize_script( 'fgg-gauge-animation', 'fgg_ajax', array(
-				'ajax_url' => admin_url( 'admin-ajax.php' ),
-				'nonce'    => wp_create_nonce( 'fgg_nonce' ),
-			) );
 		}
 	}
 

@@ -1,139 +1,159 @@
-/* Gauge animation (vanilla JS) - Cache/Minify Safe */
-(function(){
+/* Fear & Greed Gauge — Animation Engine (vanilla JS) */
+(function () {
 	'use strict';
 
-	// Cache-safe: Store initial state to prevent reflow
-	var initialized = false;
-
-	// Simple debounce
-	function debounce(fn, wait){
-		var t;
-		return function(){
-			var ctx = this, args = arguments;
-			clearTimeout(t);
-			t = setTimeout(function(){ fn.apply(ctx,args); }, wait);
-		};
+	/**
+	 * Easing: ease-out cubic
+	 */
+	function easeOutCubic(t) {
+		return 1 - Math.pow(1 - t, 3);
 	}
 
-	// Rotate needle smoothly using requestAnimationFrame
-	function animateNeedle(needleEl, fromDeg, toDeg){
-		if (!needleEl) return;
-
-		// CRITICAL FIX: Set initial transform immediately to prevent "jump" from default SVG state.
-		// needleEl.setAttribute('transform', 'rotate(' + fromDeg + ' 100 95)');
-		needleEl.style.transform = 'rotate(' + fromDeg + 'deg)';
-
-
-		var start = null;
-		var duration = 800; // ms
-		
-		function step(timestamp){
-			if (!start) start = timestamp;
-			var progress = Math.min((timestamp - start) / duration, 1);
-			var current = fromDeg + (toDeg - fromDeg) * (1 - Math.pow(1 - progress, 3));
-			
-			needleEl.style.transform = 'rotate(' + current + 'deg)';
-			
-			if (progress < 1) requestAnimationFrame(step);
-		}
-		requestAnimationFrame(step);
-	}
-
-	// Counting animation for number
-	function countTo(el, from, to, duration){
+	/**
+	 * Animate a numeric counter from `from` to `to`.
+	 */
+	function countTo(el, from, to, duration) {
 		if (!el) return;
 		var start = null;
-		function step(timestamp){
-			if (!start) start = timestamp;
-			var progress = Math.min((timestamp - start) / duration, 1);
-			var current = Math.round(from + (to - from) * progress);
-			el.textContent = current;
-			if (progress < 1) requestAnimationFrame(step);
+		function step(ts) {
+			if (!start) start = ts;
+			var p = Math.min((ts - start) / duration, 1);
+			el.textContent = Math.round(from + (to - from) * easeOutCubic(p));
+			if (p < 1) requestAnimationFrame(step);
 		}
 		requestAnimationFrame(step);
 	}
 
-	function initGauge(root){
+	/**
+	 * Convert a 0-100 gauge value to rotation degrees.
+	 *   0   → -90° (far left)
+	 *   50  →   0° (straight up)
+	 *   100 → +90° (far right)
+	 */
+	function valueToDeg(v) {
+		return (v - 50) * 1.8;
+	}
+
+	/**
+	 * Apply a dynamic glow class to the SVG arc based on value.
+	 */
+	function applyGlow(root, value) {
+		var arc = root.querySelector('.fgg-arc-track');
+		if (!arc) return;
+		arc.classList.remove('fgg-glow-fear', 'fgg-glow-neutral', 'fgg-glow-greed');
+		if (value <= 35)      arc.classList.add('fgg-glow-fear');
+		else if (value <= 65) arc.classList.add('fgg-glow-neutral');
+		else                  arc.classList.add('fgg-glow-greed');
+	}
+
+	/**
+	 * Initialise a single gauge widget.
+	 */
+	function initGauge(root) {
 		if (!root) return;
-		// Prevent double-initialization (cache compatibility)
+		// Guard against double-init (e.g. Intersection Observer firing twice)
 		if (root.getAttribute('data-fgg-initialized') === 'true') return;
 		root.setAttribute('data-fgg-initialized', 'true');
 
-	// needle group for SVG or element for legacy markup
-	var needle = root.querySelector('.fgg-needle-group') || root.querySelector('.fgg-needle');
-	// Prefer .fgg-value but fallback to .fgg-value-visible if themes or older templates hide it
-	var valueEl = root.querySelector('.fgg-value');
-	if (!valueEl) valueEl = root.querySelector('.fgg-value-visible');
+		var needle   = root.querySelector('.fgg-pointer-group');
+		var valueEl  = root.querySelector('.fgg-value-visible');
 		var changeEl = root.querySelector('.fgg-change');
-		var bars = root.querySelectorAll('.fgg-mini-chart .fgg-bar');
 
 		var value = parseInt(root.getAttribute('data-value') || '0', 10);
-		var prev = parseInt(root.getAttribute('data-prev') || value, 10);
+		var prev  = parseInt(root.getAttribute('data-prev')  || value, 10);
 
-		// Calculate degrees: (value - 50) * 1.8
-		var toDeg = (value - 50) * 1.8;
-		var fromDeg = (prev - 50) * 1.8;
+		// ── Needle ────────────────────────────────────────────────────
+		if (needle) {
+			var fromDeg = valueToDeg(prev);
+			var toDeg   = valueToDeg(value);
 
-	animateNeedle(needle, fromDeg, toDeg);
-		// Only animate visible numeric value if the element exists and is not hidden
-		if ( valueEl && window.getComputedStyle(valueEl).display !== 'none' ) {
-			countTo(valueEl, prev, value, 800);
+			/*
+			 * Step 1: Snap needle to yesterday's position with NO transition.
+			 *         This prevents the needle from always animating from center.
+			 */
+			needle.style.transition = 'none';
+			needle.style.transform  = 'rotate(' + fromDeg + 'deg)';
+
+			/*
+			 * Step 2: Force a reflow so the browser registers the initial state
+			 *         before we re-enable the transition.
+			 */
+			void needle.getBoundingClientRect();
+
+			/*
+			 * Step 3: Animate smoothly to today's value.
+			 */
+			needle.style.transition = 'transform 1.4s cubic-bezier(0.34, 1.4, 0.64, 1)';
+			needle.style.transform  = 'rotate(' + toDeg + 'deg)';
 		}
 
-		// change indicator: normalize and display with classes
-		if (changeEl){
-			var changeRaw = root.getAttribute('data-change');
-			var change = 0;
-			if (changeRaw !== null && changeRaw !== undefined && changeRaw !== '') {
-				change = parseFloat(changeRaw) || 0;
+		// ── Numeric counter ───────────────────────────────────────────
+		if (valueEl) {
+			countTo(valueEl, prev, value, 1400);
+		}
+
+		// ── Change badge ──────────────────────────────────────────────
+		if (changeEl) {
+			var rawChange = parseFloat(root.getAttribute('data-change') || '0');
+			changeEl.classList.remove('up', 'down');
+			if (rawChange > 0) {
+				changeEl.classList.add('up');
+				changeEl.textContent = '▲ ' + rawChange.toFixed(2) + '%';
+			} else if (rawChange < 0) {
+				changeEl.classList.add('down');
+				changeEl.textContent = '▼ ' + Math.abs(rawChange).toFixed(2) + '%';
+			} else {
+				changeEl.textContent = '–';
 			}
-			changeEl.classList.remove('up','down');
-			if (change > 0) changeEl.classList.add('up');
-			else if (change < 0) changeEl.classList.add('down');
-			changeEl.innerHTML = (change > 0 ? '▲ ' : change < 0 ? '▼ ' : '') + Math.abs(change) + '%';
 		}
 
-		// animate bars staggered
-		if (bars && bars.length){
-			bars.forEach(function(b,i){
-				var h = parseInt(b.getAttribute('data-height') || '10', 10);
-				setTimeout(function(){ b.style.height = h + 'px'; }, i * 80);
+		// ── Dynamic glow on the arc track ─────────────────────────────
+		applyGlow(root, value);
+
+		// ── Staggered bar animations (chart) ─────────────────────────
+		var bars = root.querySelectorAll('.fgg-svg-bar');
+		if (bars.length) {
+			bars.forEach(function (bar, i) {
+				var originalH = bar.getAttribute('height');
+				if (!originalH) return;
+				bar.setAttribute('height', '0');
+				bar.setAttribute('y', parseFloat(bar.getAttribute('y') || 0) + parseFloat(originalH));
+				setTimeout(function () {
+					bar.style.transition = 'height 0.5s ' + easeOutCubic(i / bars.length) + 's ease';
+					bar.setAttribute('height', originalH);
+					bar.setAttribute('y', bar.getAttribute('y') - parseFloat(originalH));
+				}, i * 60 + 200);
 			});
 		}
 	}
 
-	// Intersection Observer for lazy init
-	function observeGauges(){
+	/**
+	 * Attach IntersectionObserver so gauges only animate when in view.
+	 */
+	function observeGauges() {
 		var widgets = document.querySelectorAll('.fgg-widget');
 		if (!widgets || !widgets.length) return;
 
-		var onIntersect = function(entries, obs){
-			entries.forEach(function(entry){
-				if (entry.isIntersecting){
+		if (!window.IntersectionObserver) {
+			// Fallback for very old browsers
+			widgets.forEach(initGauge);
+			return;
+		}
+
+		var io = new IntersectionObserver(function (entries, obs) {
+			entries.forEach(function (entry) {
+				if (entry.isIntersecting) {
 					initGauge(entry.target);
 					obs.unobserve(entry.target);
 				}
 			});
-		};
+		}, { threshold: 0.15 });
 
-		var io = new IntersectionObserver(onIntersect, {root: null, threshold: 0.2});
-		widgets.forEach(function(w){ io.observe(w); });
+		widgets.forEach(function (w) { io.observe(w); });
 	}
 
-	// Debounced resize handler - REMOVED as it was causing re-initialization on layout shifts.
-	// The gauge is already responsive via SVG/CSS, so this is not needed.
-	/*
-	var onResize = debounce(function(){
-		document.querySelectorAll('.fgg-widget').forEach(function(w){
-			if (w.getBoundingClientRect().top < window.innerHeight && w.getBoundingClientRect().bottom > 0){
-				initGauge(w);
-			}
-		});
-	}, 250);
-	*/
-
-	// Auto init on DOM ready
-	if (document.readyState === 'loading'){
+	// Boot
+	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', observeGauges);
 	} else {
 		observeGauges();

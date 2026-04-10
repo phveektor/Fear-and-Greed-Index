@@ -1,261 +1,303 @@
 <?php
 /**
- * Gauge display template
- * Expects variables available: $title, $value, $change, $weekly, $size, $show_chart, $data
+ * Gauge display template  
+ * Variables available via extract(): $title, $size, $size_class, $show_chart,
+ * $display_title, $data, $opts
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// Ensure assets are enqueued
-if ( function_exists( 'FG_Gauge_Plugin' ) ) {
-	// noop
-}
+// -- Data fallbacks -------------------------------------------------------
+$data          = isset( $data ) && is_array( $data ) ? $data : array();
+$value         = intval( $data['current_value'] ?? 0 );
+$change        = floatval( $data['change_24h'] ?? 0 );
+$weekly        = is_array( $data['weekly_data'] ?? null ) ? $data['weekly_data'] : array();
 
-// Fallbacks
-$data = isset( $data ) && is_array( $data ) ? $data : array( 'current_value' => 0, 'change_24h' => 0, 'weekly_data' => array() );
-$value = intval( $data['current_value'] );
-$change = floatval( $data['change_24h'] );
-$weekly = is_array( $data['weekly_data'] ) ? $data['weekly_data'] : array();
-// Normalize weekly data: ensure each point has integer 'value' and timestamp; enforce oldest->newest order
-if ( ! empty( $weekly ) ) {
-	// If array keys look numeric and descending, reverse to make oldest->newest
+// Ensure weekly is sorted oldest → newest
+if ( count( $weekly ) >= 2 ) {
 	$first = reset( $weekly );
 	$last  = end( $weekly );
-	if ( isset( $first['timestamp'] ) && isset( $last['timestamp'] ) && intval( $first['timestamp'] ) > intval( $last['timestamp'] ) ) {
+	if ( isset( $first['timestamp'], $last['timestamp'] ) && intval( $first['timestamp'] ) > intval( $last['timestamp'] ) ) {
 		$weekly = array_reverse( $weekly );
 	}
-	// Coerce value types
 	foreach ( $weekly as &$pt ) {
-		$pt['value'] = isset( $pt['value'] ) ? intval( $pt['value'] ) : 0;
-		if ( isset( $pt['timestamp'] ) ) { $pt['timestamp'] = intval( $pt['timestamp'] ); }
+		$pt['value']     = intval( $pt['value'] ?? 0 );
+		$pt['timestamp'] = intval( $pt['timestamp'] ?? 0 );
 	}
 	unset( $pt );
 }
 
-// Additional variable fallbacks
-$size = isset( $size ) ? $size : 'medium';
-$size_class = isset( $size_class ) ? $size_class : 'gauge-' . $size;
+// Prev-day value for animation start position (yesterday = second-to-last)
+$prev_val = $value;
+if ( count( $weekly ) >= 2 ) {
+	$prev_val = intval( $weekly[ count( $weekly ) - 2 ]['value'] );
+}
+
+// -- Options / layout defaults -------------------------------------------
+$opts               = isset( $opts ) && is_array( $opts ) ? array_merge( get_option( 'fgg_settings', array() ), $opts ) : get_option( 'fgg_settings', array() );
+$admin_default_size = $opts['default_size'] ?? 'medium';
+$size               = ( isset( $size ) && in_array( $size, [ 'small', 'medium', 'large' ], true ) ) ? $size : $admin_default_size;
+$size_class         = 'gauge-' . $size;
+$show_chart         = isset( $show_chart ) ? $show_chart : ( $opts['show_chart'] ?? 'yes' );
+$legend_text        = $opts['legend_text'] ?? '';
+$data_scope         = $opts['data_scope'] ?? 'crypto';
+$show_change        = ( ( $opts['show_change'] ?? 'yes' ) === 'yes' );
+$show_last_updated  = ( ( $opts['show_last_updated'] ?? 'yes' ) === 'yes' );
+$bar_tooltips       = ( ( $opts['bar_tooltips'] ?? 'yes' ) === 'yes' );
+$legend_position    = $opts['legend_position'] ?? 'below';
+$show_week_heading  = ( ( $opts['show_week_heading'] ?? 'yes' ) === 'yes' );
+$color_scheme       = $opts['color_scheme'] ?? 'classic';
+
+// Respect instance-level flags (from widget or shortcode), fall back to admin option
+$show_legend   = isset( $show_legend ) && in_array( $show_legend, [ 'yes', 'no' ], true )
+	? $show_legend
+	: ( ( $opts['show_legend'] ?? 'yes' ) === 'yes' ? 'yes' : 'no' );
+$display_title = isset( $display_title ) && in_array( $display_title, [ 'yes', 'no' ], true )
+	? $display_title
+	: ( ( $opts['display_title'] ?? 'no' ) === 'yes' ? 'yes' : 'no' );
 $title = isset( $title ) ? $title : '';
-$show_chart = isset( $show_chart ) ? $show_chart : 'yes';
-$display_title = isset( $display_title ) ? $display_title : 'no';
-// Ensure $opts is at least an array. We'll also read admin options early so
-// variables like $legend_position are available before they're referenced
-// later in the template (prevents undefined variable warnings in logs).
-$opts = isset( $opts ) && is_array( $opts ) ? $opts : array();
-$early_opts = get_option( 'fgg_settings', array() );
-$opts = array_merge( $early_opts, $opts );
 
-// Ensure legend position has a sensible default before it's used below
-$legend_position = isset( $legend_position ) ? $legend_position : ( isset( $opts['legend_position'] ) ? $opts['legend_position'] : 'below' );
+// -- Value label (textual classification) --------------------------------
+function fgg_classify( int $v ): string {
+	if ( $v <= 24 ) return 'Extreme Fear';
+	if ( $v <= 49 ) return 'Fear';
+	if ( $v === 50 ) return 'Neutral';
+	if ( $v <= 74 ) return 'Greed';
+	return 'Extreme Greed';
+}
+$value_label = fgg_classify( $value );
 
-// Determine classes (moved after reading admin options so default_size can be applied)
-// ... will be computed below after $opts is loaded
+// -- Build the variable-width arc polygon (PHP geometry) -----------------
+// SVG viewport: 0 0 240 130, centre of gauge at (120, 120)
+// The arc goes from left (Extreme Fear) to right (Extreme Greed) across the top.
+// Width varies: thin (≈8 px) at the Fear end, wide (≈32 px) at the Greed end.
+$arc_cx      = 120;
+$arc_cy      = 120;
+$R_out       = 100;  // outer radius (constant)
+$R_in_start  = 92;   // inner radius at θ=0 (left / Extreme Fear)  → stroke  ≈ 8
+$R_in_end    = 68;   // inner radius at θ=π (right / Extreme Greed) → stroke ≈ 32
+$N           = 60;   // polygon segments (higher = smoother curve)
 
+$pts_o = [];
+$pts_i = [];
+for ( $i = 0; $i <= $N; $i++ ) {
+	$theta = ( $i / $N ) * M_PI;
+	$r_i   = $R_in_start + ( $R_in_end - $R_in_start ) * ( $i / $N );
+
+	$pts_o[] = [ round( $arc_cx - $R_out * cos( $theta ), 2 ), round( $arc_cy - $R_out * sin( $theta ), 2 ) ];
+	$pts_i[] = [ round( $arc_cx - $r_i  * cos( $theta ), 2 ), round( $arc_cy - $r_i  * sin( $theta ), 2 ) ];
+}
+// Outer: left → right; then inner: right → left; close.
+$d_parts = [ 'M ' . $pts_o[0][0] . ' ' . $pts_o[0][1] ];
+for ( $i = 1; $i <= $N; $i++ ) {
+	$d_parts[] = 'L ' . $pts_o[ $i ][0] . ' ' . $pts_o[ $i ][1];
+}
+$d_parts[] = 'L ' . $pts_i[ $N ][0] . ' ' . $pts_i[ $N ][1];
+for ( $i = $N - 1; $i >= 0; $i-- ) {
+	$d_parts[] = 'L ' . $pts_i[ $i ][0] . ' ' . $pts_i[ $i ][1];
+}
+$d_parts[] = 'Z';
+$arc_d = implode( ' ', $d_parts );
+
+// -- Tick marks at 0, 25, 50, 75, 100 ------------------------------------
+$tick_marks = [];
+foreach ( [ 0, 25, 50, 75, 100 ] as $tv ) {
+	$theta     = ( $tv / 100 ) * M_PI;
+	$r_i_at    = $R_in_start + ( $R_in_end - $R_in_start ) * ( $tv / 100 );
+	$tick_len  = ( $tv === 50 ) ? 10 : 7;
+	$tick_marks[] = [
+		'x1' => round( $arc_cx - ( $r_i_at - 2 )         * cos( $theta ), 2 ),
+		'y1' => round( $arc_cy - ( $r_i_at - 2 )         * sin( $theta ), 2 ),
+		'x2' => round( $arc_cx - ( $R_out + $tick_len )   * cos( $theta ), 2 ),
+		'y2' => round( $arc_cy - ( $R_out + $tick_len )   * sin( $theta ), 2 ),
+	];
+}
+
+// -- Last-updated timestamp ----------------------------------------------
+$last_ts = 0;
+foreach ( array_reverse( $weekly ) as $pt ) {
+	if ( ! empty( $pt['timestamp'] ) ) { $last_ts = $pt['timestamp']; break; }
+}
 ?>
-<div class="fgg-widget <?php echo esc_attr( $size_class ); ?>" role="img" aria-label="Fear and Greed Gauge" data-value="<?php echo esc_attr( $value ); ?>" data-prev="<?php echo esc_attr( $weekly ? intval( end( $weekly )['value'] ) : $value ); ?>" data-change="<?php echo esc_attr( $change ); ?>">
+<div class="fgg-widget <?php echo esc_attr( $size_class ); ?> scheme-<?php echo esc_attr( $color_scheme ); ?>"
+	 role="region"
+	 aria-label="<?php esc_attr_e( 'Fear and Greed Gauge', 'fear-greed-gauge' ); ?>"
+	 data-value="<?php echo esc_attr( $value ); ?>"
+	 data-prev="<?php echo esc_attr( $prev_val ); ?>"
+	 data-change="<?php echo esc_attr( $change ); ?>">
 
-	<!-- widget title removed from inside the widget to avoid duplicate titles; rely on theme/widget area title instead -->
+	<?php if ( $display_title === 'yes' && ! empty( $title ) ) : ?>
+		<div class="fgg-widget-title"><?php echo esc_html( $title ); ?></div>
+	<?php endif; ?>
 
-	<div class="gauge-wrap">
-		<!-- Completely rebuilt SVG gauge with proper structure -->
-		<svg class="fgg-gauge-svg" viewBox="0 0 200 100" width="100%" height="100" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fear and Greed gauge">
+	<!-- ===== GAUGE SVG ===== -->
+	<div class="fgg-gauge-wrap">
+		<svg class="fgg-gauge-svg" viewBox="0 0 240 130" xmlns="http://www.w3.org/2000/svg"
+			 role="img" aria-label="<?php echo esc_attr( 'Gauge: ' . $value . ' — ' . $value_label ); ?>">
 			<title><?php echo esc_html( $title ?: 'Fear & Greed Gauge' ); ?></title>
-			<desc>Semicircle gauge showing cryptocurrency market sentiment from 0 (Extreme Fear) to 100 (Extreme Greed)</desc>
-			
-			<!-- Define gradient -->
+
 			<defs>
-				<linearGradient id="fggGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-					<stop offset="0%" style="stop-color:#e53935;stop-opacity:1" />
-					<stop offset="50%" style="stop-color:#ffca28;stop-opacity:1" />
-					<stop offset="100%" style="stop-color:#43a047;stop-opacity:1" />
+				<!-- Gradient flows left (Fear) → right (Greed) in user-space coords -->
+				<linearGradient id="fggTrackGrad" x1="20" y1="0" x2="220" y2="0" gradientUnits="userSpaceOnUse">
+					<stop offset="0%"   stop-color="#e53935"/>
+					<stop offset="28%"  stop-color="#ff7043"/>
+					<stop offset="55%"  stop-color="#ffca28"/>
+					<stop offset="100%" stop-color="#43a047"/>
 				</linearGradient>
+				<filter id="fggNeedleShadow" x="-50%" y="-50%" width="200%" height="200%">
+					<feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.25)"/>
+				</filter>
 			</defs>
-			
-			<!-- Colored semicircle background (stroke-based for clean appearance) -->
-			<path d="M 30,95 A 70,70 0 0,1 170,95" 
-				  fill="none" 
-				  stroke="url(#fggGradient)" 
-				  stroke-width="20" 
-				  stroke-linecap="round" />
-			
-			<!-- NEW, CLEANED NEEDLE -->
-			<g class="fgg-needle-group" style="transform-origin: 100px 95px;">
-				<path d="M100,95 L100,25" stroke="#1f2937" stroke-width="3" stroke-linecap="round" class="fgg-needle-line" />
-				<circle cx="100" cy="95" r="7" fill="#1f2937" stroke="#fff" stroke-width="2" class="fgg-needle-pivot" />
+
+			<!-- Subtle dark halo behind the arc for depth -->
+			<path d="<?php echo $arc_d; ?>" fill="rgba(0,0,0,0.08)" transform="translate(0,2)"/>
+
+			<!-- Main colour arc track (variable-width, gradient fill) -->
+			<path class="fgg-arc-track" d="<?php echo $arc_d; ?>" fill="url(#fggTrackGrad)"/>
+
+			<!-- Tick marks -->
+			<?php foreach ( $tick_marks as $tm ) : ?>
+				<line x1="<?php echo $tm['x1']; ?>" y1="<?php echo $tm['y1']; ?>"
+					  x2="<?php echo $tm['x2']; ?>" y2="<?php echo $tm['y2']; ?>"
+					  stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.75"/>
+			<?php endforeach; ?>
+
+			<!--
+				NEEDLE GROUP
+				transform-origin is (120, 120) in SVG user-space.
+				Requires: transform-box: view-box in CSS (see gauge-styles.css)
+				Rotation formula: (value - 50) * 1.8  deg
+				  value=0   → -90°  (points left)
+				  value=50  →   0°  (points up)
+				  value=100 → +90°  (points right)
+			-->
+			<g class="fgg-pointer-group" aria-hidden="true">
+				<!-- Needle body: thin triangle, tip at y=33, base at y=117 (3px above pivot) -->
+				<!-- Shadow clone -->
+				<path d="M 120 33 L 117.5 117 L 122.5 117 Z"
+					  fill="rgba(0,0,0,0.18)"
+					  transform="translate(1.5,2)"
+					  aria-hidden="true"/>
+				<!-- Real needle  -->
+				<path class="fgg-needle-body"
+					  d="M 120 33 L 117.5 117 L 122.5 117 Z"
+					  fill="#1e293b"/>
+				<!-- Pivot outer cap -->
+				<circle cx="120" cy="120" r="10" fill="#1e293b"/>
+				<!-- Pivot inner highlight -->
+				<circle cx="120" cy="120" r="4.5" fill="white"/>
 			</g>
 		</svg>
 	</div>
+	<!-- ===== END GAUGE SVG ===== -->
 
-	<!-- Physical spacer to prevent any overlap -->
-	<div class="fgg-spacer" aria-hidden="true" style="height:30px;display:block;"></div>
-
-	<?php if ( ! empty( $weekly ) && $legend_position === 'above' ): ?>
-		<!-- Brief legend (above) -->
-		<div class="fgg-chart-legend fgg-chart-legend--above" role="note" aria-hidden="false">
-			<span class="fgg-legend-swatch" style="background:#43a047"></span>
-			<span class="fgg-legend-text">Greed (75-100)</span>
-			<span class="fgg-legend-swatch" style="background:#ffca28"></span>
-			<span class="fgg-legend-text">Neutral (50-74)</span>
-			<span class="fgg-legend-swatch" style="background:#e53935"></span>
-			<span class="fgg-legend-text">Fear (0-49)</span>
-		</div>
-	<?php endif; ?>
-
-	<!-- value display removed from frontend -->
-
-	<?php
-	// Show legend text and data scope if requested. Admin settings store defaults in option 'fgg_settings'.
-	$opts = get_option( 'fgg_settings', array() );
-	$legend_text = isset( $opts['legend_text'] ) ? $opts['legend_text'] : '';
-	$data_scope = isset( $opts['data_scope'] ) ? $opts['data_scope'] : 'crypto';
-	$show_change = ( isset( $opts['show_change'] ) && $opts['show_change'] === 'yes' );
-	$show_last_updated = ( isset( $opts['show_last_updated'] ) && $opts['show_last_updated'] === 'yes' );
-	$bar_tooltips = ( isset( $opts['bar_tooltips'] ) && $opts['bar_tooltips'] === 'yes' );
-	$legend_position = isset( $opts['legend_position'] ) ? $opts['legend_position'] : 'below';
-	$show_week_heading = ( isset( $opts['show_week_heading'] ) && $opts['show_week_heading'] === 'yes' );
-	$show_legend = ( isset( $opts['show_legend'] ) && $opts['show_legend'] === 'yes' );
-	// Normalize display_title: prefer widget-instance value when provided, otherwise use admin option
-	if ( isset( $display_title ) ) {
-		// $display_title passed from widget instance (yes/no)
-		$display_title = ( $display_title === 'yes' ) ? 'yes' : 'no';
-	} else {
-		$display_title = ( isset( $opts['display_title'] ) && $opts['display_title'] === 'yes' ) ? 'yes' : 'no';
-	}
-
-	// Apply admin default size if widget $size not provided
-	$admin_default_size = isset( $opts['default_size'] ) ? $opts['default_size'] : 'medium';
-	$size = isset( $size ) && in_array( $size, array( 'small','medium','large' ), true ) ? $size : $admin_default_size;
-	$size_class = 'gauge-' . $size;
-	if ( ( isset( $show_legend ) && 'yes' === $show_legend ) && ! empty( $legend_text ) ) : ?>
-		<div class="fgg-meta fgg-legend" role="status">
-			<span class="fgg-legend-title"><?php echo esc_html( $legend_text ); ?></span>
-			<span class="fgg-scope fgg-dim" style="display:block;margin-top:.4rem;"><?php echo esc_html( $data_scope === 'btc' ? 'Scope: Bitcoin (BTC) only' : 'Scope: Crypto market' ); ?></span>
-		</div>
-	<?php endif; ?>
-
-	<!-- legend moved to header/title area -->
-
-	<!-- detailed meta: side-by-side value and change, date underneath -->
-	<div class="fgg-detailed-meta" role="group" aria-label="Gauge details">
-		<?php if ( isset( $display_title ) && $display_title === 'yes' && ! empty( $title ) ): ?>
-			<div class="fgg-widget-title" style="font-weight:600;margin-bottom:.35rem;">
-				<?php echo esc_html( $title ); ?>
-			</div>
+	<!-- Value + Classification label -->
+	<div class="fgg-value-block">
+		<span class="fgg-value fgg-value-visible" aria-live="polite">0</span>
+		<span class="fgg-value-label <?php echo esc_attr( strtolower( str_replace( ' ', '-', $value_label ) ) ); ?>"><?php echo esc_html( $value_label ); ?></span>
+		<?php if ( $show_change ) : ?>
+			<div class="fgg-change" aria-live="polite"></div>
 		<?php endif; ?>
-		
-		<!-- Value and Change in one row -->
-		<div class="fgg-value-row">
-			<span class="fgg-value fgg-value-visible" aria-hidden="false">
-				<?php echo intval( $value ); ?>
-			</span>
-			<?php if ( $show_change ): ?>
-				<span class="fgg-change" aria-hidden="false"></span>
-			<?php endif; ?>
-		</div>
-		
-		<!-- Date on second row -->
-		<?php if ( ! empty( $weekly ) ) :
-			// last-updated: try to extract timestamp from weekly points if present
-			$last_ts = 0;
-			foreach ( array_reverse( $weekly ) as $pt ) {
-				if ( ! empty( $pt['timestamp'] ) ) { $last_ts = intval( $pt['timestamp'] ); break; }
-			}
-			if ( $last_ts && $show_last_updated ) : ?>
-				<div class="fgg-last-updated" aria-hidden="false"><?php echo esc_html( date_i18n( get_option( 'date_format', 'M j, Y' ), $last_ts ) ); ?></div>
-			<?php endif; ?>
+		<?php if ( $last_ts && $show_last_updated ) : ?>
+			<div class="fgg-last-updated"><?php echo esc_html( date_i18n( get_option( 'date_format', 'M j, Y' ), $last_ts ) ); ?></div>
 		<?php endif; ?>
 	</div>
 
-	<?php if ( 'yes' === $show_chart && ! empty( $weekly ) ): ?>
-				<!-- Inline SVG column chart (reliable across themes) -->
-				<?php if ( 'yes' === $show_chart && ! empty( $weekly ) ):
-					// Sidebar-friendly chart sizing: tuned to fit narrow sidebars safely
-					$count = count( $weekly );
-					$svg_w = 200; // compact svg width
-					$svg_h = 150; // add extra vertical space so labels don't overlap or get clipped
-					$left_margin = 34; // leave room for y-axis labels
-					$bottom_margin = 28; // space for x-axis labels
-					$chart_w = $svg_w - $left_margin - 8;
-					$chart_h = $svg_h - $bottom_margin - 12;
-					$gap = 4; // tighter gap between bars
-					$bar_w = (int) floor( ( $chart_w - ( $count - 1 ) * $gap ) / $count );
-					if ( $bar_w < 4 ) { $bar_w = 4; }
-				?>
-				<svg class="fgg-svg-chart" viewBox="0 0 <?php echo $svg_w; ?> <?php echo $svg_h; ?>" width="100%" height="<?php echo $svg_h; ?>" role="img" aria-label="Recent weekly Fear and Greed values">
-					<!-- y-axis numeric ticks -->
-					<?php
-					$ticks = array(100,75,50,25,0);
-					foreach ( $ticks as $tick ):
-						$y_pos = 8 + ( ( 100 - $tick ) / 100 ) * $chart_h;
-					?>
-						<text x="<?php echo $left_margin - 6; ?>" y="<?php echo $y_pos + 4; ?>" class="fgg-svg-ylabel" text-anchor="end"><?php echo $tick; ?></text>
-					<?php endforeach; ?>
-
-					<g class="fgg-svg-bars" transform="translate(<?php echo $left_margin; ?>,8)">
-						<?php
-						$x = 0;
-						foreach ( $weekly as $pt ):
-							$val = isset( $pt['value'] ) ? intval( $pt['value'] ) : 0;
-							$h_px = round( ( $val / 100 ) * $chart_h );
-							// color
-							if ( $val >= 75 ) { $bar_color = '#43a047'; }
-							elseif ( $val >= 50 ) { $bar_color = '#ffca28'; }
-							else { $bar_color = '#e53935'; }
-							// prepare tooltip: date + value
-							$label = '';
-							if ( ! empty( $pt['timestamp'] ) ) {
-								$label = date_i18n( 'M j', intval( $pt['timestamp'] ) );
-							} else {
-								$label = isset( $pt['label'] ) ? $pt['label'] : '';
-							}
-							$tooltip = trim( $label . ' — ' . $val );
-						?>
-							<g class="fgg-svg-bar" transform="translate(<?php echo $x; ?>,<?php echo $chart_h - $h_px; ?>)"<?php if ( $bar_tooltips ) { echo ' aria-label="' . esc_attr( $tooltip ) . '"'; } ?> >
-								<?php if ( $bar_tooltips ): ?>
-									<title><?php echo esc_html( $tooltip ); ?></title>
-								<?php endif; ?>
-								<rect x="0" y="0" width="<?php echo $bar_w; ?>" height="<?php echo $h_px; ?>" fill="<?php echo $bar_color; ?>" rx="3" data-value="<?php echo esc_attr( $val ); ?>" />
-							</g>
-						<?php
-							$x += $bar_w + $gap;
-						endforeach;
-						?>
-					</g>
-
-					<!-- x-axis labels removed; dates are included in bar tooltips -->
-				</svg>
-				<?php endif; ?>
+	<?php if ( 'yes' === $show_legend && ! empty( $legend_text ) ) : ?>
+		<div class="fgg-meta" role="note">
+			<span class="fgg-legend-text"><?php echo esc_html( $legend_text ); ?></span>
+			<span class="fgg-scope-pill"><?php echo esc_html( $data_scope === 'btc' ? 'Bitcoin' : 'Crypto Market' ); ?></span>
+		</div>
 	<?php endif; ?>
 
-		<?php if ( ! empty( $weekly ) && $legend_position === 'below' ): ?>
-			<!-- Brief legend under the column chart -->
-			<div class="fgg-chart-legend" role="note" aria-hidden="false">
-				<span class="fgg-legend-swatch" style="background:#43a047"></span>
-				<span class="fgg-legend-text">Greed (75-100)</span>
-				<span class="fgg-legend-swatch" style="background:#ffca28"></span>
-				<span class="fgg-legend-text">Neutral (50-74)</span>
-				<span class="fgg-legend-swatch" style="background:#e53935"></span>
-				<span class="fgg-legend-text">Fear (0-49)</span>
-			</div>
-		<?php endif; ?>
+	<!-- Weekly bar chart -->
+	<?php if ( 'yes' === $show_chart && ! empty( $weekly ) ) : ?>
+		<div class="fgg-chart-section">
+			<?php if ( $show_week_heading ) : ?>
+				<div class="fgg-section-heading"><?php esc_html_e( 'This Week', 'fear-greed-gauge' ); ?></div>
+			<?php endif; ?>
 
-	<?php if ( empty( $weekly ) ): ?>
+			<?php
+			$count       = count( $weekly );
+			$svg_w       = 220;
+			$svg_h       = 110;
+			$left_m      = 28;
+			$bottom_m    = 6;
+			$chart_w     = $svg_w - $left_m - 4;
+			$chart_h     = $svg_h - $bottom_m - 10;
+			$gap         = 5;
+			$bar_w       = max( 6, (int) floor( ( $chart_w - ( $count - 1 ) * $gap ) / $count ) );
+
+			if ( $legend_position === 'above' ) :
+			?>
+			<div class="fgg-chart-legend">
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#43a047"></span>Greed 75+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#ffca28"></span>Neutral 50+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#ff7043"></span>Fear 25+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#e53935"></span>Ext. Fear</span>
+			</div>
+			<?php endif; ?>
+
+			<svg class="fgg-svg-chart" viewBox="0 0 <?php echo $svg_w; ?> <?php echo $svg_h; ?>" width="100%" height="<?php echo $svg_h; ?>" role="img" aria-label="<?php esc_attr_e( 'Weekly Fear and Greed values', 'fear-greed-gauge' ); ?>">
+				<?php foreach ( [ 100, 75, 50, 25, 0 ] as $tick ) :
+					$y_p = 8 + ( ( 100 - $tick ) / 100 ) * $chart_h; ?>
+					<line x1="<?php echo $left_m; ?>" y1="<?php echo $y_p; ?>" x2="<?php echo $svg_w; ?>" y2="<?php echo $y_p; ?>" stroke="currentColor" stroke-opacity="0.07" stroke-width="1"/>
+					<text x="<?php echo $left_m - 5; ?>" y="<?php echo $y_p + 4; ?>" class="fgg-svg-ylabel" text-anchor="end"><?php echo $tick; ?></text>
+				<?php endforeach; ?>
+
+				<g transform="translate(<?php echo $left_m; ?>,8)">
+					<?php
+					$bx = 0;
+					foreach ( $weekly as $pt ) :
+						$bv      = intval( $pt['value'] ?? 0 );
+						$bh      = max( 3, round( ( $bv / 100 ) * $chart_h ) );
+						$bcolor  = $bv >= 75 ? '#43a047' : ( $bv >= 50 ? '#ffca28' : ( $bv >= 25 ? '#ff7043' : '#e53935' ) );
+						$blabel  = ! empty( $pt['timestamp'] ) ? date_i18n( 'M j', $pt['timestamp'] ) : '';
+						$bttip   = trim( $blabel . ' — ' . $bv );
+					?>
+						<g transform="translate(<?php echo $bx; ?>,<?php echo $chart_h - $bh; ?>)"
+						   <?php if ( $bar_tooltips ) echo 'aria-label="' . esc_attr( $bttip ) . '"'; ?>>
+							<?php if ( $bar_tooltips ) : ?><title><?php echo esc_html( $bttip ); ?></title><?php endif; ?>
+							<rect x="0" y="0" width="<?php echo $bar_w; ?>" height="<?php echo $bh; ?>"
+								  fill="<?php echo esc_attr( $bcolor ); ?>"
+								  rx="3" ry="3" class="fgg-svg-bar"
+								  data-value="<?php echo esc_attr( $bv ); ?>"/>
+						</g>
+					<?php
+						$bx += $bar_w + $gap;
+					endforeach;
+					?>
+				</g>
+			</svg>
+
+			<?php if ( $legend_position !== 'above' ) : ?>
+			<div class="fgg-chart-legend">
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#43a047"></span>Greed 75+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#ffca28"></span>Neutral 50+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#ff7043"></span>Fear 25+</span>
+				<span class="fgg-legend-item"><span class="fgg-legend-swatch" style="background:#e53935"></span>Ext. Fear</span>
+			</div>
+			<?php endif; ?>
+		</div>
+	<?php endif; ?>
+
+	<?php if ( empty( $weekly ) ) : ?>
 		<div class="fgg-loading">
-			<div class="fgg-skeleton" style="width:100px;height:24px;margin:1rem auto;border-radius:4px;"></div>
+			<div class="fgg-skeleton" style="width:80px;height:16px;margin:1rem auto;border-radius:4px;"></div>
 		</div>
 	<?php endif; ?>
 
 	<!-- Schema.org structured data -->
 	<script type="application/ld+json">
-	<?php echo wp_json_encode( array(
-		'@context' => 'https://schema.org',
-		'@type' => 'FinancialProduct',
-		'name' => 'Crypto Fear and Greed Index',
-		'value' => $value,
-		'datePublished' => gmdate( 'c', time() ),
-	) ); ?>
+	<?php echo wp_json_encode( [
+		'@context'      => 'https://schema.org',
+		'@type'         => 'SpecialAnnouncement',
+		'name'          => 'Crypto Fear and Greed Index',
+		'text'          => $value . ' — ' . $value_label,
+		'datePosted'    => gmdate( 'c', time() ),
+	] ); ?>
 	</script>
 
 </div>
